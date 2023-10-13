@@ -511,6 +511,7 @@ namespace PatchWorker
 		if (bEnableChunk)
 		{
 			Context.PakChunks.Append(Context.GetSettingObject()->GetChunkInfos());
+			Context.PakChunks.StableSort([](const auto& a, const auto& b) -> bool {return a.Priority > b.Priority; });
 		}
 		else
 		{
@@ -580,6 +581,7 @@ namespace PatchWorker
 		
 		for(const auto& PlatformName :Context.GetSettingObject()->GetPakTargetPlatformNames())
 		{
+			TMap<FString, int32> MultiRefAssetLookUp;
 			for(auto& Chunk:Context.PakChunks)
 			{
 				TimeRecorder CookPlatformChunkAssetsTotalTR(FString::Printf(TEXT("Cook Chunk %s as %s Total time:"),*Chunk.ChunkName,*PlatformName));
@@ -591,6 +593,7 @@ namespace PatchWorker
 					THotPatcherTemplateHelper::GetEnumValueByName(PlatformName,Platform);
 
 					FChunkAssetDescribe ChunkAssetsDescrible = UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(
+						MultiRefAssetLookUp,
 						Context.GetSettingObject(),
 						Context.VersionDiff,
 						Chunk, TArray<ETargetPlatform>{Platform}
@@ -679,11 +682,13 @@ namespace PatchWorker
 		SCOPED_NAMED_EVENT_TEXT("PatchAssetRegistryWorker",FColor::Red);
 		if(Context.GetSettingObject()->GetSerializeAssetRegistryOptions().bSerializeAssetRegistry)
 		{
-			auto SerializeAssetRegistry = [](FHotPatcherPatchContext& Context,const FChunkInfo& Chunk,const FString& PlatformName)
+			TMap<FString, int32> MultiRefAssetLookUp;
+			auto SerializeAssetRegistry = [&MultiRefAssetLookUp](FHotPatcherPatchContext& Context,const FChunkInfo& Chunk,const FString& PlatformName)
 			{
 				ETargetPlatform Platform;
 				THotPatcherTemplateHelper::GetEnumValueByName(PlatformName,Platform);
 				FChunkAssetDescribe ChunkAssetsDescrible = UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(
+					MultiRefAssetLookUp,
 					Context.GetSettingObject(),
 					Context.VersionDiff,
 					Chunk, TArray<ETargetPlatform>{Platform}
@@ -924,6 +929,7 @@ namespace PatchWorker
 		{
 			FString PlatformName = THotPatcherTemplateHelper::GetEnumNameByValue(Platform);
 			// PakModeSingleLambda(PlatformName, CurrentVersionSavePath);
+			TMap<FString, int32> MultiRefAssetLookUp;
 			for (auto& Chunk : Context.PakChunks)
 			{
 				TimeRecorder PakChunkTR(FString::Printf(TEXT("Generate Chunk Platform:%s ChunkName:%s PakProxy Time:"),*PlatformName,*Chunk.ChunkName));
@@ -940,6 +946,7 @@ namespace PatchWorker
 				{
 					TimeRecorder CookAssetsTR(FString::Printf(TEXT("CollectPakCommandByChunk Platform:%s ChunkName:%s."),*PlatformName,*Chunk.ChunkName));
 					ChunkPakListCommands= UFlibPatchParserHelper::CollectPakCommandByChunk(
+						MultiRefAssetLookUp,
 						Context.VersionDiff,
 						Chunk,
 						PlatformName,

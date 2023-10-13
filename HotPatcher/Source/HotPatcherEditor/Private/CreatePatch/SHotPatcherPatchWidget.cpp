@@ -418,9 +418,10 @@ FReply SHotPatcherPatchWidget::DoPreviewChunk() const
 	}
 	
 	FString ShowMsg;
+	TMap<FString, int32> MultiRefAssetLookUp;
 	for (const auto& Chunk : PatchChunks)
 	{	
-		FChunkAssetDescribe ChunkAssetsDescrible = UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(ExportPatchSetting.Get(), VersionDiffInfo,Chunk, ExportPatchSetting->GetPakTargetPlatforms());
+		FChunkAssetDescribe ChunkAssetsDescrible = UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(MultiRefAssetLookUp, ExportPatchSetting.Get(), VersionDiffInfo,Chunk, ExportPatchSetting->GetPakTargetPlatforms());
 		ShowMsg.Append(FString::Printf(TEXT("Chunk:%s\n"), *Chunk.ChunkName));
 		auto AppendFilesToMsg = [&ShowMsg](const FString& CategoryName, const TArray<FName>& InFiles)
 		{

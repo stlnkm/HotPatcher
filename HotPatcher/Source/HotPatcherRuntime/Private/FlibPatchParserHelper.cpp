@@ -922,6 +922,7 @@ TMap<ETargetPlatform,FPlatformExternFiles> UFlibPatchParserHelper::GetAllPlatfor
 }
 
 FChunkAssetDescribe UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(
+	TMap<FString, int32>& MultiRefAssetLookUp,
 	const FHotPatcherSettingBase* PatcheSettings,
 	const FPatchVersionDiff& DiffInfo,
 	const FChunkInfo& Chunk, TArray<ETargetPlatform> Platforms
@@ -1029,8 +1030,29 @@ FChunkAssetDescribe UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(
 			return ResultAssetDependInfos;
 		};
 
-		ChunkAssetDescribe.AddAssets = CollectChunkAssets(AddAssetsRef, AssetFilterPaths);
-		ChunkAssetDescribe.ModifyAssets = CollectChunkAssets(ModifyAssetsRef, AssetFilterPaths);
+		auto FilterMultiRefAssets = [&MultiRefAssetLookUp, &Chunk](const FAssetDependenciesInfo& Assets) -> FAssetDependenciesInfo {
+			SCOPED_NAMED_EVENT_TEXT("FilterMultiRefAssets", FColor::Red);
+			FAssetDependenciesInfo ResultAssetDependInfos;
+			for (const auto& ModuleEntry : Assets.AssetsDependenciesMap)
+			{
+				if (!ResultAssetDependInfos.AssetsDependenciesMap.Contains(ModuleEntry.Key))
+				{
+					ResultAssetDependInfos.AssetsDependenciesMap.Add(ModuleEntry.Key, FAssetDependenciesDetail(ModuleEntry.Key, TMap<FString, FAssetDetail>{}));
+				}
+				for (const auto& PackageEntry : ModuleEntry.Value.AssetDependencyDetails)
+				{
+					if (!MultiRefAssetLookUp.Contains(PackageEntry.Key) || MultiRefAssetLookUp[PackageEntry.Key] == Chunk.Priority)
+					{
+						MultiRefAssetLookUp.FindOrAdd(PackageEntry.Key) = Chunk.Priority;
+						ResultAssetDependInfos.AssetsDependenciesMap.Find(ModuleEntry.Key)->AssetDependencyDetails.Add(PackageEntry);
+					}
+				}
+			}
+			return ResultAssetDependInfos;
+		};
+
+		ChunkAssetDescribe.AddAssets = FilterMultiRefAssets(DiffInfo.AssetDiffInfo.AddAssetDependInfo); // CollectChunkAssets(AddAssetsRef, AssetFilterPaths);
+		ChunkAssetDescribe.ModifyAssets = FilterMultiRefAssets(DiffInfo.AssetDiffInfo.ModifyAssetDependInfo); // CollectChunkAssets(ModifyAssetsRef, AssetFilterPaths);
 		ChunkAssetDescribe.Assets = UFlibAssetManageHelper::CombineAssetDependencies(ChunkAssetDescribe.AddAssets, ChunkAssetDescribe.ModifyAssets);
 	}
 
@@ -1101,6 +1123,7 @@ FChunkAssetDescribe UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(
 
 
 TArray<FString> UFlibPatchParserHelper::CollectPakCommandsStringsByChunk(
+	TMap<FString, int32>& MultiRefAssetLookUp,
 	const FPatchVersionDiff& DiffInfo,
 	const FChunkInfo& Chunk,
 	const FString& PlatformName,
@@ -1110,7 +1133,7 @@ TArray<FString> UFlibPatchParserHelper::CollectPakCommandsStringsByChunk(
 {
 	TArray<FString> ChunkPakCommands;
 	{
-		TArray<FPakCommand> ChunkPakCommands_r = UFlibPatchParserHelper::CollectPakCommandByChunk(DiffInfo, Chunk, PlatformName,/* PakOptions,*/PatcheSettings);
+		TArray<FPakCommand> ChunkPakCommands_r = UFlibPatchParserHelper::CollectPakCommandByChunk(MultiRefAssetLookUp, DiffInfo, Chunk, PlatformName,/* PakOptions,*/PatcheSettings);
 		for (const auto& PakCommand : ChunkPakCommands_r)
 		{
 			ChunkPakCommands.Append(PakCommand.GetPakCommands());
@@ -1121,6 +1144,7 @@ TArray<FString> UFlibPatchParserHelper::CollectPakCommandsStringsByChunk(
 }
 
 TArray<FPakCommand> UFlibPatchParserHelper::CollectPakCommandByChunk(
+	TMap<FString, int32>& MultiRefAssetLookUp,
 	const FPatchVersionDiff& DiffInfo,
 	const FChunkInfo& Chunk,
 	const FString& PlatformName,
@@ -1129,13 +1153,13 @@ TArray<FPakCommand> UFlibPatchParserHelper::CollectPakCommandByChunk(
 )
 {
 	TArray<FPakCommand> PakCommands;
-	auto CollectPakCommandsByChunkLambda = [&PakCommands,PatcheSettings](const FPatchVersionDiff& DiffInfo, const FChunkInfo& Chunk, const FString& PlatformName/*, const TArray<FString>& PakOptions*/)
+	auto CollectPakCommandsByChunkLambda = [&PakCommands,PatcheSettings,&MultiRefAssetLookUp](const FPatchVersionDiff& DiffInfo, const FChunkInfo& Chunk, const FString& PlatformName/*, const TArray<FString>& PakOptions*/)
 	{
 		ETargetPlatform Platform;
 		THotPatcherTemplateHelper::GetEnumValueByName(PlatformName,Platform);
 		TArray<ETargetPlatform> CollectPlatforms = {ETargetPlatform::AllPlatforms};
 		CollectPlatforms.AddUnique(Platform);
-		FChunkAssetDescribe ChunkAssetsDescrible = UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(PatcheSettings, DiffInfo ,Chunk, CollectPlatforms);
+		FChunkAssetDescribe ChunkAssetsDescrible = UFlibPatchParserHelper::CollectFChunkAssetsDescribeByChunk(MultiRefAssetLookUp, PatcheSettings, DiffInfo ,Chunk, CollectPlatforms);
 		
 		bool bIoStore =false;
 		bool bAllowBulkDataInIoStore = false;
